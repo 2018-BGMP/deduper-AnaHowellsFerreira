@@ -1,0 +1,221 @@
+
+# Deduper assignment:
+
+## Part 1
+
+For this portion of the assignment, you should design your algorithm for single-end data, with 96 UMIs.
+UMI information will be in the QNAME, like so: ```NS500451:154:HWKTMBGXX:1:11101:15364:1139:GAACAGGT```.
+Discard any UMIs with errors (or error correct, if you're feeling ambitious).
+
+- Define the problem:
+  Removing PCR duplicates (large sets of identical copies of each other) avoids
+  high false discovery rate, therefore, true PCR duplicate % should be measured and
+  minimized as much as possible (unprocessed files might have 30-70% duplicates).
+  Goal is to remove duplicates and retain a single copy of each read.
+
+_ Overall approach:
+
+PCR duplicate characteristics:
+same chromosome, otherwise, restart set (dummy dict containing UMI, chr, adj. start, strand)
+
+
+- Write examples:
+    - Include a properly formated input sam file
+
+    - Include a properly formated expected output sam file
+
+- Develop your algorithm using pseudocode
+
+- Determine high level functions
+    - Description
+    - Function headers
+    - Test examples (for individual functions)
+    - Return statement
+
+____________________________________________________________________________________________________________
+
+##########
+#argparse ##
+###########
+
+#!/usr/bin/env/ python
+import argparse
+
+def get_arguments():
+  parser = argparse.ArgumentParser(description = "Deduper")
+  parser.add_argument("-f", "--file", help = "absolute file path", required=True, type=str) \
+  parser.add_argument("-u", "--umi", help="designates text file containing the list of UMIs", required=False) \
+  parser.add_argument("-h", "--help", help="optional arg, prints a USEFUL help message", required=False) \
+  return parser.parse_args()
+
+args = get_arguments()
+#this will print the argument given to each flag
+print args.file
+print args.umi
+print args.help
+
+# help message should include warning message about:
+# input data need to be sorted by chromosome (suggest Samtools)
+# script considers only cigar string cases for M, N, I, S, and D (refer to SAM/BAM docs)
+
+
+###################################################
+#input sam file with duplicates; also, test files...WIP #
+###################################################
+
+
+#conditions for test files, assuming all from same chromosome:
+# UMI not in dictionary
+# Same CIGAR, different FLAG, position
+# same UMIs (01) but different CIGAR
+# same POS & CIGAR, different UMIs
+# (keep building multiple scenarios for test files)...
+
+
+
+@HD	VN:1.0	SO:unsorted
+@PG	ID:GSNAP	PN:gsnap	VN:2017-10-12	CL:gsnap.avx2 --gunzip -t 26 -A sam -m 5 -d mm10_chroms -D /projects/bgmp/coonrod/mmu/INTEL -s /projects/bgmp/coonrod/mmu/INTEL/mm10_chroms/mm10_chroms.maps/Mus_musculus.GRCm38.89.splicesites.iit --split-output=/projects/bgmp/coonrod/deduper/gsnap//Datset1 /projects/bgmp/coonrod/deduper//Dataset1.fastq_dups.gz
+@SQ	SN:1	LN:195471971
+@SQ	SN:2	LN:182113224
+@SQ	SN:3	LN:160039680
+@SQ	SN:4	LN:156508116
+@SQ	SN:5	LN:151834684
+...
+
+#1.QNAME                                            2.FLAG   3.RNAME    4.POS   5. MAPQ  6.CIGAR           7.RNEXT  8.PNEXT 9.TLEN     10.SEQ                                                                  11.QUAL
+NS500451:154:HWKTMBGXX:1:11101:6251:1098: NOT FOUND    0       3     76765947    36      71M               [3]       0       0       GGCGTTCCAAACCACGGTCATCTCTTCTTTGCTTACTTTAGTGACTTCTGGAGGATCAGGGCGGCCAGGTC /<EEAEEEEEEEEAEEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:6251:1098: UMI 02       0       3     76765947    36      71M               [3]       0       0       GGCGTTCCAAACCACGGTCATCTCTTCTTTGCTTACTTTAGTGACTTCTGGAGGATCAGGGCGGCCAGGTC /<EEAEEEEEEEEAEEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:6251:1098: UMI 02       1       2     76852128   36       71M               [1]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:6251:1098: UMI 02       0       3       10        36      60M10D10M         [9]       0       0       GGCGTTCCAAACCACGGTCATCTCTTCTTTGCTTACTTTAGTGACTTCTGGAGGATCAGGGCGGCCAGGTC /<EEAEEEEEEEEAEEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      16      3       10        36      100M              [16]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       3       10        36      100M              [4]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       3       10        36      50M40S            [5]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       3       60        36      50S50M            [6]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       3       60        36      50S10M10N30M      [7]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       3       60        36      50S10M20I10D10M   [8]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 03      16       2      10        36      100M              [11]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 03      16       2      20        36      10S90M            [12]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 03      16       2      10        36      90M10S            [13]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 03      16       2      10        36      10S10M10N20D10I50M[14]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 04      16       2      10        36      100M              [15]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+
+
+
+################################################
+# expected output sam file without duplicates #
+################################################
+@HD	VN:1.0	SO:unsorted
+@PG	ID:GSNAP	PN:gsnap	VN:2017-10-12	CL:gsnap.avx2 --gunzip -t 26 -A sam -m 5 -d mm10_chroms -D /projects/bgmp/coonrod/mmu/INTEL -s /projects/bgmp/coonrod/mmu/INTEL/mm10_chroms/mm10_chroms.maps/Mus_musculus.GRCm38.89.splicesites.iit --split-output=/projects/bgmp/coonrod/deduper/gsnap//Datset1 /projects/bgmp/coonrod/deduper//Dataset1.fastq_dups.gz
+@SQ	SN:1	LN:195471971
+@SQ	SN:2	LN:182113224
+@SQ	SN:3	LN:160039680
+@SQ	SN:4	LN:156508116
+@SQ	SN:5	LN:151834684
+...
+
+
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      16       3       10        36      100M     [16]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:24260:1121: UMI 01      0       2       10        36      50M40S     [10]       0       0       TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA 6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/ MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:6251:1098:  UMI 02      0       3      10        36      60M10D10M     [9]       0       0       GGCGTTCCAAACCACGGTCATCTCTTCTTTGCTTACTTTAGTGACTTCTGGAGGATCAGGGCGGCCAGGTC /<EEAEEEEEEEEAEEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 03      16       2       10        36      100M     [11]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+NS500451:154:HWKTMBGXX:1:11101:25533:1187: UMI 04      16       2       10        36      100M     [15]       0       0       CTTGGTAACTTTCAGAGAATTAGTCACAACTTCTGAAGCAACCACAGTCCATGCAAGTCGACTGGTTTCTC 6AEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEAEEEEEEE<EEEEEEEEEEEEEEEEEEEE MD:Z:71 NH:i:1  HI:i:1  NM:i:0  SM:i:36 XQ:i:40 X2:i:0  XO:Z:UU
+
+
+############
+# strategy #
+############
+
+
+# define columns to be evaluated:
+# QNAME = col1 (contains UMI)
+# FLAG = col2 (evaluate strandedness)
+# RNAME = col3 (contains chromosome information)
+# CIGAR= col 6 (evaluating only for M,S, I, D, N - account for softclipping)
+
+
+############
+# functions #
+############
+
+def paired_end_check function
+	read FLAG values
+	if paired = ((flag & 1?) == 1?)
+	print "paired end found. Exiting!"
+	break
+
+def UMI_check function
+		read line
+		grab QNAME with regex
+		return str
+
+
+def strand_check function
+		read FLAG (col2)
+		evaluate if FLAG (col 2) is multiple of 16 ((flag & 16) == 16) ??
+		strandedness = ((flag & 16) == 16)
+		return strandedness == True, else == False
+
+
+def adj_strand+_pos()
+	read cigar string values from + orientation only
+  define adj.position (+) = POS - S (before)
+	return integer of adjusted leftmost POS value
+
+def adj_strand-_pos()
+  read cigar string values from - orientation only
+  define adj.position (-) = POS + M + S (after) + I + D + N  #integers
+  return integer of adjusted rightmost POS value
+
+def chrom_number ()
+  read QNAME
+  grab only chromosome position
+  return integer
+
+
+##############
+## Script ###
+##############
+
+
+dict_known_UMI = { see txt file on github}
+
+#not sure how to do this yet, but Jason suggested using a set() to hash and quickly localize desired values
+#instead of reading item per item in a dictionary which can be computationally intense. Any suggestions on
+#how to do that are appreciated
+
+initialize empty set (should this be ordered??)
+s = set() # want to add UMI, chromosome, position, strandedness
+
+
+open file
+
+  if line in file starts with @, write to deduper_filename.sam
+  else
+  evaluate line with chrom_number ()
+  if chromosome position != previous chromosome position # ask about using ffill(), shift() or loc()
+  reset entries for set
+
+
+  if UMI_check(string) not in dict_known_UMI
+    continue to evaluate next line
+  else
+    write to set  # s.add(key) ???
+    write chrom_number output to set
+  continue to next flag column                      #to look at flag with strand_check()
+
+  if strand_check(strandedness) == True      # strand -
+    # apply formula POS + M + S (after) + I + D + N
+    if adj_strand-_pos() output already in set
+    continue
+    else
+      write to set
+
+  if strand_check(strandedness) == False     # strand +
+    # POS - S (before)
+    if adj_strand+_pos() output already in set
+    continue
+    else
+      write to set
+  restart loop
