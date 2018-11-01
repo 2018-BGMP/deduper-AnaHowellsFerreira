@@ -1,0 +1,21 @@
+
+############
+#argparse ##
+############
+
+#!/usr/bin/env/ python
+import argparse
+
+def get_arguments():
+
+    parser = argparse.ArgumentParser(description = "Deduper")
+    parser.add_argument("-f", "--file", help = "absolute path for the sorted input file in SAM format", required=True, type=str)\
+    parser.add_argument("-u", "--umi", help="designates text file containing the list of known UMIs", required=False) \
+    parser.add_argument("-h", "--help", help="Useful message", required=False) \
+    return parser.parse_args()
+
+args = get_arguments()
+#this will print the argument given to each flag
+print args.file
+print args.umi
+print args.help
